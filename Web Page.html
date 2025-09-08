@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Word Encoder / Decoder (Base62) — Web Page</title>
+  <style>
+    :root {
+      --bg: #0f1724;
+      --card: #0b1220;
+      --accent: #4CAF50;
+      --blue: #2196F3;
+      --text: #e6eef8
+    }
+
+    body {
+      font-family: Inter, Segoe UI, Roboto, Arial;
+      background: linear-gradient(180deg, #071025 0%, #08162a 100%);
+      color: var(--text);
+      margin: 0;
+      padding: 28px
+    }
+
+    .app {
+      max-width: 980px;
+      margin: 0 auto
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 14px;
+      border-radius: 12px;
+      box-shadow: 0 6px 18px rgba(2, 6, 23, 0.6)
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      opacity: 0.9;
+      margin-bottom: 6px
+    }
+
+    input[type=text],
+    textarea,
+    .file-input {
+      width: 100%;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: transparent;
+      color: var(--text);
+      resize: vertical
+    }
+
+    textarea {
+      min-height: 160px
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center
+    }
+
+    button {
+      border: none;
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer
+    }
+
+    .btn-main {
+      background: var(--accent);
+      color: #fff
+    }
+
+    .btn-blue {
+      background: var(--blue);
+      color: #fff
+    }
+
+    .small {
+      font-size: 12px;
+      padding: 6px 8px
+    }
+
+    .foot {
+      margin-top: 12px;
+      font-size: 13px;
+      color: rgba(230, 238, 248, 0.8)
+    }
+
+    .files {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px
+    }
+
+    .notice {
+      font-size: 13px;
+      color: rgba(230, 238, 248, 0.8);
+      margin-top: 8px
+    }
+
+    footer {
+      margin-top: 18px;
+      font-size: 12px;
+      color: rgba(230, 238, 248, 0.6)
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <header>
+      <h1>🧠 Word Encoder / Decoder (Base62) — Web Page</h1>
+    </header>
+
+    <div class="grid">
+      <!-- Encode Card -->
+      <div class="card">
+        <h3>🔤 Encode</h3>
+        <label>Pick text file (or paste below)</label>
+        <input id="encode-file" type="file" accept="text/*" />
+        <div style="height:8px"></div>
+        <label>Or paste input text</label>
+        <textarea id="encode-input" placeholder="Paste text here..."></textarea>
+
+        <div class="controls">
+          <button class="btn-main" id="btn-encode">🚀 Encode</button>
+          <button class="small" id="download-encoded" disabled>Download Encoded</button>
+          <button class="small" id="download-json" disabled>Save dictionary.json</button>
+          <button class="small" id="download-csv" disabled>Save dictionary.csv</button>
+          <button class="small" id="download-bin" disabled>Save dictionary.bin</button>
+        </div>
+
+        <div class="notice">Encoding uses base62 integer tokens for contiguous word characters (letters & digits). The
+          dictionary (word→id,frequency) will be generated and available for download in JSON, CSV and a compact binary
+          format compatible with the original Python structure.</div>
+        <div style="height:8px"></div>
+        <label>Encoded Output</label>
+        <textarea id="encoded-output" readonly placeholder="Encoded text will appear here..."></textarea>
+      </div>
+
+      <!-- Decode Card -->
+      <div class="card">
+        <h3>🔁 Decode</h3>
+        <label>Pick encoded text file (or paste below)</label>
+        <input id="decode-file" type="file" accept="text/*" />
+        <div style="height:8px"></div>
+        <label>Or paste encoded text</label>
+        <textarea id="decode-input" placeholder="Paste encoded text here..."></textarea>
+
+        <div style="height:8px"></div>
+        <label>Provide dictionary (choose dictionary.bin or dictionary.json)</label>
+        <input id="dict-file" type="file" accept="*/*" />
+
+        <div class="controls">
+          <button class="btn-blue" id="btn-decode">🔓 Decode</button>
+          <button class="small" id="download-decoded" disabled>Download Decoded</button>
+        </div>
+
+        <div class="notice">If you provide dictionary.bin it will be used. If you supply JSON or CSV, it will be used as
+          fallback. The binary format is: [uint32 word_len][bytes word][uint32 id][uint32 freq] repeated.</div>
+        <div style="height:8px"></div>
+        <label>Decoded Output</label>
+        <textarea id="decoded-output" readonly placeholder="Decoded text will appear here..."></textarea>
+      </div>
+    </div>
+
+    <footer>Made For Fun
+    </footer>
+  </div>
+
+  <script>
+    let encodeFilename = "input";
+    let decodeFilename = "encoded";
+
+    const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    function intToBase62(n) { if (n === 0) return '0'; let s = ''; while (n > 0) { s = BASE62[n % 62] + s; n = Math.floor(n / 62); } return s; }
+    function base62ToInt(s) { let n = 0; for (const ch of s) { n = n * 62 + BASE62.indexOf(ch); } return n; }
+    function isWordChar(c) { return /[A-Za-z0-9]/.test(c); }
+
+    // Encoding logic
+    function buildDictionaryAndEncode(text, existingDict = null) {
+      const wordDict = existingDict || new Map();
+
+      // find next available ID
+      let currentId = wordDict.size > 0
+        ? Math.max(...Array.from(wordDict.values()).map(v => v.id)) + 1
+        : 1;
+
+      let out = '';
+      let i = 0;
+
+      while (i < text.length) {
+        if (isWordChar(text[i])) {
+          let start = i;
+          while (i < text.length && isWordChar(text[i])) i++;
+          const word = text.slice(start, i);
+
+          if (!wordDict.has(word)) {
+            // assign a new ID only for new words
+            wordDict.set(word, { id: currentId++, freq: 0 });
+          }
+
+          const rec = wordDict.get(word);
+          rec.freq++; // always update frequency
+          out += intToBase62(rec.id);
+
+        } else {
+          out += text[i];
+          i++;
+        }
+      }
+
+      return { encoded: out, dict: wordDict };
+    }
+
+
+    // Create downloadable blobs
+    function dictToJson(dict) {
+      const data = [];
+      for (const [w, rec] of dict.entries()) data.push({ word: w, value: rec.id, frequency: rec.freq });
+      return JSON.stringify({ metadata: { total_words: data.length, encoding: 'base62', case_sensitive: true, punctuation_included: true }, dictionary: data }, null, 2);
+    }
+    function dictToCsv(dict) {
+      const rows = ['word,value,frequency'];
+      for (const [w, rec] of dict.entries()) rows.push(`${escapeCsv(w)},${rec.id},${rec.freq}`);
+      return rows.join('\n');
+    }
+    function escapeCsv(s) { if (s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"'; return s; }
+
+    function dictToBinary(dict) {
+      // compute size
+      let size = 0;
+      const encoder = new TextEncoder();
+      for (const [w, rec] of dict.entries()) {
+        const bytes = encoder.encode(w);
+        size += 4 + bytes.length + 4 + 4; // uint32 len, bytes, uint32 id, uint32 freq
+      }
+      const buffer = new ArrayBuffer(size);
+      const view = new DataView(buffer);
+      let offset = 0;
+      for (const [w, rec] of dict.entries()) {
+        const bytes = encoder.encode(w);
+        view.setUint32(offset, bytes.length, true); offset += 4;
+        new Uint8Array(buffer, offset, bytes.length).set(bytes); offset += bytes.length;
+        view.setUint32(offset, rec.id, true); offset += 4;
+        view.setUint32(offset, rec.freq, true); offset += 4;
+      }
+      return buffer;
+    }
+
+    function downloadBlob(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    // Decode binary dictionary
+    async function parseBinaryDictionary(file) {
+      const buffer = await file.arrayBuffer();
+      const view = new DataView(buffer);
+      const decoder = new TextDecoder();
+      const map = new Map();
+      let offset = 0;
+      while (offset < buffer.byteLength) {
+        if (offset + 4 > buffer.byteLength) break;
+        const len = view.getUint32(offset, true); offset += 4;
+        const bytes = new Uint8Array(buffer, offset, len); offset += len;
+        const word = decoder.decode(bytes);
+        const id = view.getUint32(offset, true); offset += 4;
+        const freq = view.getUint32(offset, true); offset += 4;
+        map.set(word, { id, freq });
+      }
+      return map;
+    }
+
+    // UI wiring
+    const encodeFile = document.getElementById('encode-file');
+    const encodeInput = document.getElementById('encode-input');
+    const encodedOutput = document.getElementById('encoded-output');
+    const btnEncode = document.getElementById('btn-encode');
+    const downloadEncoded = document.getElementById('download-encoded');
+    const downloadJson = document.getElementById('download-json');
+    const downloadCsv = document.getElementById('download-csv');
+    const downloadBin = document.getElementById('download-bin');
+
+    let lastDict = null; // store Map after encoding for downloads
+
+    encodeFile.addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      encodeFilename = f.name.replace(/\.[^/.]+$/, ""); // strip extension
+      encodeInput.value = await f.text();
+    });
+
+    btnEncode.addEventListener('click', () => {
+      const text = encodeInput.value || '';
+      const { encoded, dict } = buildDictionaryAndEncode(text, lastDict);
+      encodedOutput.value = encoded;
+      lastDict = dict; // keep updated dictionary
+
+      // enable save buttons
+      downloadEncoded.disabled = false;
+      downloadJson.disabled = false;
+      downloadCsv.disabled = false;
+      downloadBin.disabled = false;
+    });
+
+
+    downloadEncoded.addEventListener('click', () => {
+      const blob = new Blob([encodedOutput.value], { type: 'text/plain;charset=utf-8' });
+      downloadBlob(blob, encodeFilename + '_encoded.txt');
+    }); downloadEncoded.addEventListener('click', () => {
+      const blob = new Blob([encodedOutput.value], { type: 'text/plain;charset=utf-8' });
+      downloadBlob(blob, 'encoded.txt');
+    });
+    downloadJson.addEventListener('click', () => {
+      const blob = new Blob([dictToJson(lastDict)], { type: 'application/json;charset=utf-8' });
+      downloadBlob(blob, 'dictionary.json');
+    });
+    downloadCsv.addEventListener('click', () => {
+      const blob = new Blob([dictToCsv(lastDict)], { type: 'text/csv;charset=utf-8' });
+      downloadBlob(blob, 'dictionary.csv');
+    });
+    downloadBin.addEventListener('click', () => {
+      const buf = dictToBinary(lastDict);
+      const blob = new Blob([buf], { type: 'application/octet-stream' });
+      downloadBlob(blob, 'dictionary.bin');
+    });
+
+    // Decode wiring
+    const decodeFile = document.getElementById('decode-file');
+    const decodeInput = document.getElementById('decode-input');
+    const dictFile = document.getElementById('dict-file');
+    const decodedOutput = document.getElementById('decoded-output');
+    const btnDecode = document.getElementById('btn-decode');
+    const downloadDecoded = document.getElementById('download-decoded');
+
+    let loadedDict = null; // Map word-> {id,freq}
+
+    decodeFile.addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      decodeFilename = f.name.replace(/\.[^/.]+$/, ""); // strip extension
+      decodeInput.value = await f.text();
+    });
+
+    dictFile.addEventListener('change', async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const name = f.name.toLowerCase();
+      if (name.endsWith('.bin')) {
+        loadedDict = await parseBinaryDictionary(f);
+      } else if (name.endsWith('.json')) {
+        const t = await f.text();
+        try {
+          const parsed = JSON.parse(t);
+          loadedDict = new Map();
+          for (const item of parsed.dictionary || parsed) {
+            const w = item.word || item[0];
+            const v = item.value || item[1];
+            const freq = item.frequency || item[2] || 0;
+            loadedDict.set(w, { id: v, freq });
+          }
+        } catch (err) { alert('Invalid JSON dictionary'); loadedDict = null; }
+      } else if (name.endsWith('.csv')) {
+        const t = await f.text();
+        const lines = t.split('\n').map(l => l.trim()).filter(Boolean);
+        loadedDict = new Map();
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(','); if (parts.length < 3) continue;
+          loadedDict.set(parts[0].replace(/^"|"$/g, ''), { id: parseInt(parts[1], 10), freq: parseInt(parts[2], 10) });
+        }
+      } else {
+        alert('Unrecognized dictionary format. Use .bin, .json or .csv'); loadedDict = null;
+      }
+    });
+
+    btnDecode.addEventListener('click', async () => {
+      const text = decodeInput.value || '';
+      if (!loadedDict) { alert('Please load a dictionary file (dictionary.bin or dictionary.json)'); return; }
+      // build reverse map id->word
+      const rev = new Map();
+      for (const [w, rec] of loadedDict.entries()) rev.set(rec.id, w);
+
+      let out = '';
+      let i = 0;
+      while (i < text.length) {
+        if (/[A-Za-z0-9]/.test(text[i])) {
+          let token = '';
+          while (i < text.length && /[A-Za-z0-9]/.test(text[i])) { token += text[i]; i++; }
+          const id = base62ToInt(token);
+          out += (rev.get(id) ?? '[?]');
+        } else { out += text[i]; i++; }
+      }
+      decodedOutput.value = out;
+      downloadDecoded.disabled = false;
+    });
+
+    downloadDecoded.addEventListener('click', () => {
+      const blob = new Blob([decodedOutput.value], { type: 'text/plain;charset=utf-8' });
+      downloadBlob(blob, decodeFilename + '_decoded.txt');
+    });
+
+  </script>
+</body>
+
+</html>
